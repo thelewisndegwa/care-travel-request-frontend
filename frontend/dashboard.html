@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Profile — CARE TAR</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app-shell"></div>
+
+  <div id="page-content" class="page-content" hidden>
+    <div class="page-header">
+      <h1>My Profile</h1>
+    </div>
+    <div id="profile-loading"></div>
+    <div id="profile-card" class="profile-card" hidden></div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/notifications.js"></script>
+  <script src="js/admin.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('auth');
+
+    renderAppShell('profile');
+    mountPageContent('#page-content');
+
+    const loadingEl = document.getElementById('profile-loading');
+    const cardEl = document.getElementById('profile-card');
+
+    async function loadProfile() {
+      showPageLoading(loadingEl);
+
+      try {
+        const profile = await fetchCurrentUser();
+        const manager = formatManagerLabel(profile) || 'Not assigned';
+
+        cardEl.innerHTML = `
+          <dl class="detail-grid">
+            <dt>Full Name</dt><dd>${escapeHtml(profile.name)}</dd>
+            <dt>Email</dt><dd>${escapeHtml(profile.email)}</dd>
+            <dt>Role</dt><dd><span class="badge badge--role">${escapeHtml(profile.role)}</span></dd>
+            <dt>Manager</dt><dd>${escapeHtml(manager)}</dd>
+            ${profile.employeeNumber ? `<dt>Employee Number</dt><dd>${escapeHtml(profile.employeeNumber)}</dd>` : ''}
+            ${profile.department ? `<dt>Department</dt><dd>${escapeHtml(profile.department)}</dd>` : ''}
+          </dl>`;
+        cardEl.hidden = false;
+        loadingEl.innerHTML = '';
+
+        // Refresh stored user info if profile has newer data
+        const token = getToken();
+        if (token) setAuth(token, { ...getUser(), ...profile });
+      } catch (err) {
+        loadingEl.innerHTML = '';
+        showToast(err.message || 'Failed to load profile.', 'error');
+      }
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

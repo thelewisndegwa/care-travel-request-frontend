@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CARE Travel Authority Request</title>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    if (getToken()) {
+      window.location.replace('dashboard.html');
+    } else {
+      window.location.replace('login.html');
+    }
+  </script>
+</head>
+<body>
+  <p>Redirecting…</p>
+</body>
+</html>

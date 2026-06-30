@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pending Approvals — CARE TAR</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app-shell"></div>
+
+  <div id="page-content" class="page-content" hidden>
+    <div class="page-header">
+      <h1>Pending My Approval</h1>
+    </div>
+    <p class="text-muted">Review and approve or reject travel requests from your team members.</p>
+
+    <div id="approvals-loading"></div>
+    <div id="approvals-list"></div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/requests.js"></script>
+  <script src="js/notifications.js"></script>
+  <script>
+    if (!requireAuth(['admin'])) throw new Error('auth');
+
+    renderAppShell('approvals');
+    mountPageContent('#page-content');
+
+    const loadingEl = document.getElementById('approvals-loading');
+    const listEl = document.getElementById('approvals-list');
+
+    function renderApprovalCard(request) {
+      const dest = request.itinerary?.destination || 'No destination';
+      const requester = request.requestedBy?.name || request.requestedBy?.email || '—';
+      const dates = `${formatDate(request.itinerary?.dateFrom)} – ${formatDate(request.itinerary?.dateTo)}`;
+
+      return `
+        <article class="approval-card" data-request-id="${escapeHtml(getRequestId(request))}">
+          <div class="approval-card__header">
+            <div>
+              <h3>${escapeHtml(dest)}</h3>
+              <p class="text-muted">Requested by ${escapeHtml(requester)} · ${escapeHtml(dates)}</p>
+            </div>
+            ${statusBadge(request.status)}
+          </div>
+          <p>${escapeHtml(request.purposeOfTrip || '')}</p>
+          <p class="text-muted">Mode: ${escapeHtml(formatModeOfTravel(request.modeOfTravel))}</p>
+          <div class="btn-group" style="margin-top: 1rem;">
+            <a href="request-detail.html?id=${encodeURIComponent(getRequestId(request))}" class="btn btn--secondary btn--sm">View Details</a>
+            <button type="button" class="btn btn--success btn--sm approve-btn">Approve</button>
+            <button type="button" class="btn btn--danger btn--sm reject-toggle-btn">Reject</button>
+          </div>
+          <div class="reject-form" hidden>
+            <div class="form-group">
+              <label for="reject-comment-${escapeHtml(getRequestId(request))}">Rejection comment (required)</label>
+              <textarea id="reject-comment-${escapeHtml(getRequestId(request))}" class="reject-comment" rows="3" required placeholder="Explain why this request is being rejected…"></textarea>
+            </div>
+            <div class="btn-group">
+              <button type="button" class="btn btn--danger btn--sm confirm-reject-btn">Confirm Rejection</button>
+              <button type="button" class="btn btn--ghost btn--sm cancel-reject-btn">Cancel</button>
+            </div>
+          </div>
+        </article>`;
+    }
+
+    function bindApprovalActions() {
+      listEl.querySelectorAll('.approval-card').forEach((card) => {
+        const id = card.dataset.requestId;
+        const rejectForm = card.querySelector('.reject-form');
+        const commentEl = card.querySelector('.reject-comment');
+
+        card.querySelector('.approve-btn').addEventListener('click', async () => {
+          if (!confirmAction('Approve this travel request?')) return;
+          const btn = card.querySelector('.approve-btn');
+          setLoading(btn, true, 'Approving…');
+          try {
+            await approveRequest(id);
+            showToast('Request approved.', 'success');
+            card.remove();
+            if (!listEl.children.length) {
+              showEmptyState(listEl, 'No pending approvals.');
+            }
+          } catch (err) {
+            showToast(err.message || 'Failed to approve.', 'error');
+          } finally {
+            setLoading(btn, false);
+          }
+        });
+
+        card.querySelector('.reject-toggle-btn').addEventListener('click', () => {
+          rejectForm.hidden = !rejectForm.hidden;
+        });
+
+        card.querySelector('.cancel-reject-btn').addEventListener('click', () => {
+          rejectForm.hidden = true;
+          commentEl.value = '';
+        });
+
+        card.querySelector('.confirm-reject-btn').addEventListener('click', async () => {
+          const comment = commentEl.value.trim();
+          if (!comment) {
+            showToast('A rejection comment is required.', 'warning');
+            commentEl.focus();
+            return;
+          }
+          if (!confirmAction('Reject this travel request?')) return;
+
+          const btn = card.querySelector('.confirm-reject-btn');
+          setLoading(btn, true, 'Rejecting…');
+          try {
+            await rejectRequest(id, comment);
+            showToast('Request rejected.', 'success');
+            card.remove();
+            if (!listEl.children.length) {
+              showEmptyState(listEl, 'No pending approvals.');
+            }
+          } catch (err) {
+            showToast(err.message || 'Failed to reject.', 'error');
+          } finally {
+            setLoading(btn, false);
+          }
+        });
+      });
+    }
+
+    async function loadApprovals() {
+      showPageLoading(loadingEl);
+      listEl.innerHTML = '';
+
+      try {
+        const result = await fetchPendingApprovals();
+        const requests = result.data || result.requests || result || [];
+
+        loadingEl.innerHTML = '';
+
+        if (!requests.length) {
+          showEmptyState(listEl, 'No pending approvals.');
+        } else {
+          listEl.innerHTML = requests.map(renderApprovalCard).join('');
+          bindApprovalActions();
+        }
+      } catch (err) {
+        loadingEl.innerHTML = '';
+        showToast(err.message || 'Failed to load approvals.', 'error');
+      }
+    }
+
+    loadApprovals();
+  </script>
+</body>
+</html>

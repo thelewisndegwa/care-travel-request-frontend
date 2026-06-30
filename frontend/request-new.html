@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Travel Request — CARE TAR</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app-shell"></div>
+
+  <div id="page-content" class="page-content" hidden>
+    <div class="page-header">
+      <div>
+        <a href="requests.html" class="back-link">← My Requests</a>
+        <h1>New Travel Request</h1>
+      </div>
+    </div>
+
+    <p class="text-muted">Complete all sections below. Your line manager will be assigned as approver automatically.</p>
+
+    <div id="form-error" class="alert alert--error" hidden role="alert"></div>
+
+    <form id="request-form" novalidate>
+      <section class="form-section">
+        <h2>Project Information</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="project_name">Project Name</label>
+            <input type="text" id="project_name" name="project_name" required />
+          </div>
+          <div class="form-group">
+            <label for="project_businessUnit">Business Unit</label>
+            <input type="text" id="project_businessUnit" name="project_businessUnit" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="project_fundCode">Fund Code</label>
+            <input type="text" id="project_fundCode" name="project_fundCode" required />
+          </div>
+          <div class="form-group">
+            <label for="project_projectId">Project ID</label>
+            <input type="text" id="project_projectId" name="project_projectId" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="project_departmentId">Department ID</label>
+            <input type="text" id="project_departmentId" name="project_departmentId" required />
+          </div>
+          <div class="form-group">
+            <label for="project_activityId">Activity ID</label>
+            <input type="text" id="project_activityId" name="project_activityId" required />
+          </div>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <h2>Assignment &amp; Purpose</h2>
+        <div class="form-group">
+          <label for="assignedAreaOfOperation">Assigned Area of Operation</label>
+          <input type="text" id="assignedAreaOfOperation" name="assignedAreaOfOperation" required />
+        </div>
+        <div class="form-group">
+          <label for="purposeOfTrip">Purpose of Trip</label>
+          <textarea id="purposeOfTrip" name="purposeOfTrip" required placeholder="Describe the business purpose of this travel…"></textarea>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <h2>Mode of Travel</h2>
+        <div class="checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" name="mode_careVehicle" id="mode_careVehicle" />
+            CARE Vehicle
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="mode_publicTransport" id="mode_publicTransport" />
+            Public Transport
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="mode_aircraft" id="mode_aircraft" />
+            Aircraft
+          </label>
+        </div>
+        <p class="form-hint">Select all modes that apply.</p>
+      </section>
+
+      <section class="form-section">
+        <h2>Itinerary</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="itinerary_dateFrom">Date From</label>
+            <input type="date" id="itinerary_dateFrom" name="itinerary_dateFrom" required />
+          </div>
+          <div class="form-group">
+            <label for="itinerary_dateTo">Date To</label>
+            <input type="date" id="itinerary_dateTo" name="itinerary_dateTo" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="itinerary_destination">Destination</label>
+          <input type="text" id="itinerary_destination" name="itinerary_destination" required />
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" name="itinerary_accommodationNeeded" id="itinerary_accommodationNeeded" />
+            Accommodation needed
+          </label>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <h2>Passengers</h2>
+        <div id="passengers-list"></div>
+        <button type="button" class="btn btn--secondary btn--sm" id="add-passenger-btn">+ Add Passenger</button>
+      </section>
+
+      <div class="btn-group">
+        <button type="submit" class="btn btn--primary" id="submit-btn">Submit Request</button>
+        <a href="requests.html" class="btn btn--ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/requests.js"></script>
+  <script src="js/notifications.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('auth');
+    if (!canCreateRequests()) {
+      window.location.href = 'dashboard.html';
+      throw new Error('forbidden');
+    }
+
+    renderAppShell('new-request');
+    mountPageContent('#page-content');
+
+    const form = document.getElementById('request-form');
+    const errorEl = document.getElementById('form-error');
+    const submitBtn = document.getElementById('submit-btn');
+    const passengersList = document.getElementById('passengers-list');
+
+    initPassengerList(passengersList);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.hidden = true;
+
+      const payload = buildRequestPayload(form);
+
+      const hasMode =
+        payload.modeOfTravel.careVehicle ||
+        payload.modeOfTravel.publicTransport ||
+        payload.modeOfTravel.aircraft;
+      if (!hasMode) {
+        renderApiErrors(errorEl, { message: 'Please select at least one mode of travel.' });
+        return;
+      }
+
+      if (!payload.passengers.length) {
+        renderApiErrors(errorEl, { message: 'Please add at least one passenger.' });
+        return;
+      }
+
+      setLoading(submitBtn, true, 'Submitting…');
+
+      try {
+        const result = await createRequest(payload);
+        showToast('Travel request submitted successfully.', 'success');
+        const id = getRequestId(result);
+        window.location.href = id ? `request-detail.html?id=${encodeURIComponent(id)}` : 'requests.html';
+      } catch (err) {
+        if (err instanceof ApiError) {
+          const msg = err.message.toLowerCase();
+          if (msg.includes('manager') || err.body?.message?.toLowerCase?.().includes('manager')) {
+            renderApiErrors(errorEl, {
+              message: err.message + ' Please contact HR to have your manager assigned in the system.',
+            });
+          } else {
+            renderApiErrors(errorEl, err);
+          }
+        } else {
+          renderApiErrors(errorEl, err);
+        }
+      } finally {
+        setLoading(submitBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>

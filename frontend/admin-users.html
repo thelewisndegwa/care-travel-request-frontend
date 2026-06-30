@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>All Users — CARE TAR</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app-shell"></div>
+
+  <div id="page-content" class="page-content" hidden>
+    <div class="page-header">
+      <h1>All Users</h1>
+    </div>
+    <p class="text-muted">View all registered users in the travel request system.</p>
+
+    <div id="users-loading"></div>
+    <div id="users-empty"></div>
+    <div class="data-table-wrap" id="users-table-wrap" hidden>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Manager</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/notifications.js"></script>
+  <script src="js/admin.js"></script>
+  <script>
+    if (!requireAuth(['superadmin'])) throw new Error('auth');
+
+    renderAppShell('admin-users');
+    mountPageContent('#page-content');
+
+    const loadingEl = document.getElementById('users-loading');
+    const tableWrap = document.getElementById('users-table-wrap');
+    const tbody = document.getElementById('users-tbody');
+
+    async function loadUsers() {
+      showPageLoading(loadingEl);
+
+      try {
+        const result = await fetchAllUsers();
+        const users = result.data || result.users || result || [];
+
+        loadingEl.innerHTML = '';
+
+        if (!users.length) {
+          showEmptyState(document.getElementById('users-empty'), 'No users found.');
+        } else {
+          tbody.innerHTML = users.map(renderUserRow).join('');
+          tableWrap.hidden = false;
+        }
+      } catch (err) {
+        loadingEl.innerHTML = '';
+        showToast(err.message || 'Failed to load users.', 'error');
+      }
+    }
+
+    loadUsers();
+  </script>
+</body>
+</html>

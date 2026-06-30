@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Request Details — CARE TAR</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app-shell"></div>
+
+  <div id="page-content" class="page-content" hidden>
+    <div id="detail-loading"></div>
+    <div id="detail-content" hidden></div>
+
+  <!-- Edit / resubmit form for rejected requests -->
+    <div id="resubmit-section" hidden>
+      <div class="page-header" style="margin-top: 2rem;">
+        <h2>Edit &amp; Resubmit Request</h2>
+      </div>
+      <p class="text-muted">Update the details below and resubmit for approval.</p>
+      <div id="resubmit-error" class="alert alert--error" hidden role="alert"></div>
+
+      <form id="resubmit-form" novalidate>
+        <section class="form-section">
+          <h2>Project Information</h2>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="project_name">Project Name</label>
+              <input type="text" id="project_name" name="project_name" required />
+            </div>
+            <div class="form-group">
+              <label for="project_businessUnit">Business Unit</label>
+              <input type="text" id="project_businessUnit" name="project_businessUnit" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="project_fundCode">Fund Code</label>
+              <input type="text" id="project_fundCode" name="project_fundCode" required />
+            </div>
+            <div class="form-group">
+              <label for="project_projectId">Project ID</label>
+              <input type="text" id="project_projectId" name="project_projectId" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="project_departmentId">Department ID</label>
+              <input type="text" id="project_departmentId" name="project_departmentId" required />
+            </div>
+            <div class="form-group">
+              <label for="project_activityId">Activity ID</label>
+              <input type="text" id="project_activityId" name="project_activityId" required />
+            </div>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h2>Assignment &amp; Purpose</h2>
+          <div class="form-group">
+            <label for="assignedAreaOfOperation">Assigned Area of Operation</label>
+            <input type="text" id="assignedAreaOfOperation" name="assignedAreaOfOperation" required />
+          </div>
+          <div class="form-group">
+            <label for="purposeOfTrip">Purpose of Trip</label>
+            <textarea id="purposeOfTrip" name="purposeOfTrip" required></textarea>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h2>Mode of Travel</h2>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" name="mode_careVehicle" />
+              CARE Vehicle
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="mode_publicTransport" />
+              Public Transport
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="mode_aircraft" />
+              Aircraft
+            </label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h2>Itinerary</h2>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="itinerary_dateFrom">Date From</label>
+              <input type="date" id="itinerary_dateFrom" name="itinerary_dateFrom" required />
+            </div>
+            <div class="form-group">
+              <label for="itinerary_dateTo">Date To</label>
+              <input type="date" id="itinerary_dateTo" name="itinerary_dateTo" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="itinerary_destination">Destination</label>
+            <input type="text" id="itinerary_destination" name="itinerary_destination" required />
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" name="itinerary_accommodationNeeded" />
+              Accommodation needed
+            </label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h2>Passengers</h2>
+          <div id="passengers-list"></div>
+          <button type="button" class="btn btn--secondary btn--sm" id="add-passenger-btn">+ Add Passenger</button>
+        </section>
+
+        <div class="btn-group">
+          <button type="submit" class="btn btn--primary" id="resubmit-btn">Resubmit Request</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/requests.js"></script>
+  <script src="js/notifications.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('auth');
+
+    const requestId = new URLSearchParams(window.location.search).get('id');
+    if (!requestId) {
+      window.location.href = 'requests.html';
+      throw new Error('no id');
+    }
+
+    const user = getUser();
+    const activeNav = user.role === 'superadmin' ? 'all-requests' : 'my-requests';
+    renderAppShell(activeNav);
+    mountPageContent('#page-content');
+
+    const loadingEl = document.getElementById('detail-loading');
+    const contentEl = document.getElementById('detail-content');
+    const resubmitSection = document.getElementById('resubmit-section');
+    const resubmitForm = document.getElementById('resubmit-form');
+    const resubmitError = document.getElementById('resubmit-error');
+    const resubmitBtn = document.getElementById('resubmit-btn');
+
+    function isRequester(request) {
+      const uid = String(user.id || user._id);
+      const requesterId = request.requestedBy?._id || request.requestedBy?.id || request.requestedBy;
+      return (
+        String(requesterId) === uid ||
+        request.requestedBy?.email === user.email
+      );
+    }
+
+    async function loadRequest() {
+      showPageLoading(loadingEl);
+
+      try {
+        const result = await fetchRequest(requestId);
+        const request = result.data || result;
+
+        loadingEl.innerHTML = '';
+        contentEl.innerHTML = renderRequestDetail(request);
+        contentEl.hidden = false;
+
+        if (request.status === 'rejected' && isRequester(request) && canCreateRequests()) {
+          resubmitSection.hidden = false;
+          initPassengerList(resubmitForm.querySelector('#passengers-list'));
+          populateRequestForm(resubmitForm, request);
+        }
+      } catch (err) {
+        loadingEl.innerHTML = '';
+        showToast(err.message || 'Failed to load request.', 'error');
+      }
+    }
+
+    resubmitForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resubmitError.hidden = true;
+
+      const payload = buildRequestPayload(resubmitForm);
+
+      const hasMode =
+        payload.modeOfTravel.careVehicle ||
+        payload.modeOfTravel.publicTransport ||
+        payload.modeOfTravel.aircraft;
+      if (!hasMode) {
+        renderApiErrors(resubmitError, { message: 'Please select at least one mode of travel.' });
+        return;
+      }
+
+      if (!confirmAction('Resubmit this travel request for approval?')) return;
+
+      setLoading(resubmitBtn, true, 'Resubmitting…');
+
+      try {
+        await updateRequest(requestId, payload);
+        showToast('Request resubmitted successfully.', 'success');
+        window.location.reload();
+      } catch (err) {
+        renderApiErrors(resubmitError, err);
+      } finally {
+        setLoading(resubmitBtn, false);
+      }
+    });
+
+    loadRequest();
+  </script>
+</body>
+</html>
